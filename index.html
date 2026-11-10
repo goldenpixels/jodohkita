@@ -563,7 +563,7 @@
     <button class="smallbtn" id="btnMusic" type="button">▶️ Musik DJ</button>
     <button class="smallbtn" id="btnKaraoke" type="button">🎤 Karaoke</button>
     <button class="smallbtn" id="btnGift" type="button">🎁 Kirim Gift</button>
-    <button class="smallbtn" id="btnSongs" type="button">🎵 Katalog Lagu</button>
+    <button class="smallbtn" id="btnSongs" type="button">🎵 Pilih Lagu</button>
     <button class="smallbtn" id="btnDjList" type="button">🎧 List DJ</button>
   </div>
   <div id="karaokeBox" class="hidden">
@@ -639,7 +639,7 @@
 </nav>
 
 <footer>
-  JodohKita v2.1.1 — situs cari jodoh Indonesia (18+). Akun, profil & DM antar anggota tersimpan di server 🌐; room, gift & koin masih demo lokal.<br>
+  JodohKita v2.1.2 — situs cari jodoh Indonesia (18+). Akun, profil & DM antar anggota tersimpan di server 🌐; room, gift & koin masih demo lokal.<br>
   Versi demo: profil contoh fiktif, akun &amp; pendaftaran tersimpan lokal di perangkat.
 </footer>
 
@@ -2050,7 +2050,13 @@ var SONGS = [
   {t: "Yamko Rambe Yamko", cat: "Daerah • Papua", lines: ["Hee yamko rambe yamko", "Aronawa kombe", "Hee yamko rambe yamko", "Aronawa kombe", "Teemi nokibe kubano ko bombe ko", "Yuma no bungo awe ade", "Teemi nokibe kubano ko bombe ko", "Yuma no bungo awe ade"]},
   {t: "Rasa Sayange", cat: "Daerah • Maluku", lines: ["Rasa sayange, rasa sayang sayange", "Eee lihat dari jauh rasa sayang sayange", "Rasa sayange, rasa sayang sayange", "Eee lihat dari jauh rasa sayang sayange", "Kalau ada sumur di ladang", "Boleh kita menumpang mandi", "Kalau ada umurku panjang", "Boleh kita berjumpa lagi"]},
   {t: "Bintang di Malam Ini", cat: "Original JodohKita", lines: ["Malam ini bintang bersinar terang", "Kita nyanyi bareng, hati pun senang", "Kalau jodoh memang takkan ke mana", "Senyum kamu yang selalu aku tunggu", "Nyanyi lagi sampai pagi menjelang"]},
-  {t: "Jodoh Pasti Bertemu", cat: "Original JodohKita", lines: ["Di antara ramai dunia maya", "Ada kamu yang buatku percaya", "Jodoh pasti bertemu pada waktunya", "Kita jaga hati, kita jaga rasa"]}
+  {t: "Jodoh Pasti Bertemu", cat: "Original JodohKita", lines: ["Di antara ramai dunia maya", "Ada kamu yang buatku percaya", "Jodoh pasti bertemu pada waktunya", "Kita jaga hati, kita jaga rasa"]},
+  {t: "Gundul-Gundul Pacul", cat: "Daerah • Jawa Tengah", lines: ["Gundul gundul pacul cul, gembelengan", "Nyunggi nyunggi wakul kul, gembelengan", "Wakul ngglimpang segane dadi sakratan", "Wakul ngglimpang segane dadi sakratan"]},
+  {t: "Cublak-Cublak Suweng", cat: "Daerah • Jawa Timur", lines: ["Cublak cublak suweng", "Suwenge teng gelenter", "Mambu ketundung gudel", "Pak empong lera lere"]},
+  {t: "Lir Ilir", cat: "Daerah • Jawa Tengah", lines: ["Lir ilir, lir ilir, tandure wus sumilir", "Tak ijo royo-royo tak sengguh temanten anyar", "Cah angon, cah angon, penekna blimbing kuwi", "Lunyu lunyu penekna kanggo mbasuh dodotira"]},
+  {t: "Jali-Jali", cat: "Daerah • Betawi", lines: ["Ini dia si jali-jali", "Lagunya enak merdu sekali", "Capek sedikit tidak peduli", "Asalkan tuan senang di hati"]},
+  {t: "Tokecang", cat: "Daerah • Sunda", lines: ["Tokecang tokecang bala gendir tosblong", "Angeun kacang angeun kacang sapapilueun kaoncom oncom", "Tokecang tokecang bala gendir tosblong", "Angeun kacang angeun kacang sapapilueun kaoncom oncom"]},
+  {t: "Manuk Dadali", cat: "Daerah • Sunda", lines: ["Manuk dadali manuk panggagahna", "Perlambang sakti Indonesia jaya", "Manuk dadali pangkakoncarana", "Resep ngahiji rukun sakabehna"]}
 ];
 var LOCKED = [
   {cat: "Dangdut Koplo", titles: ["Begadang", "Terlena", "Goyang Dumang", "Sakitnya Tuh Di Sini"]},
@@ -2062,6 +2068,30 @@ function renderSongs(){
   var q = (document.getElementById("songSearch").value || "").toLowerCase();
   var box = document.getElementById("songList");
   box.innerHTML = "";
+  var djShown = 0;
+  if (typeof DJ_TRACKS !== "undefined") DJ_TRACKS.forEach(function(tr, i){
+    if (q && tr.name.toLowerCase().indexOf(q) < 0) return;
+    if (!djShown){
+      var hd = document.createElement("div"); hd.id = "plDjHead";
+      hd.innerHTML = "<b style='font-size:13.5px;'>🎧 Musik DJ — tap buat memutar</b>";
+      hd.style.marginBottom = "6px"; box.appendChild(hd);
+    }
+    djShown++;
+    var play = (typeof dj !== "undefined" && dj.on && dj.idx === i);
+    var dd = document.createElement("div"); dd.className = "song-item";
+    dd.innerHTML = "<span>🎧 <b>" + tr.name + "</b><br><span class='note'>" + tr.bpm + " BPM" + (play ? " • ● LAGI DIPUTAR" : "") + "</span></span><button class='smallbtn' type='button'>" + (play ? "⏸️ Stop" : "▶️ Putar") + "</button>";
+    dd.querySelector("button").addEventListener("click", function(){
+      if (typeof dj !== "undefined" && dj.on && dj.idx === i){ djStop(); } else { djStart(i); }
+      setTimeout(renderSongs, 200);
+    });
+    box.appendChild(dd);
+  });
+  var kShown = SONGS.some(function(sg2){ return !q || (sg2.t + " " + sg2.cat).toLowerCase().indexOf(q) >= 0; });
+  if (kShown){
+    var kh = document.createElement("div");
+    kh.innerHTML = "<b style='font-size:13.5px;'>🎤 Karaoke — pilih lagu buat dinyanyikan</b>";
+    kh.style.margin = "12px 0 6px"; box.appendChild(kh);
+  }
   SONGS.forEach(function(sg){
     if (q && (sg.t + " " + sg.cat).toLowerCase().indexOf(q) < 0) return;
     var d = document.createElement("div"); d.className = "song-item";
@@ -2173,6 +2203,42 @@ var SONG_MUSIC = {
     [[62,1],[64,1],[67,1],[69,1],[67,1],[64,1],[62,2]],
     [[67,1],[69,1],[72,1],[69,1],[67,1],[69,1],[67,1],[64,1]],
     [[64,1],[62,1],[60,1],[62,1],[64,1],[67,1],[64,2]]
+  ]},
+  "Gundul-Gundul Pacul": {bpm: 112, chords: [[48, "M"], [55, "M"], [41, "M"], [48, "M"]], barsPerLine: 2, lead: [
+    [[67,1],[67,1],[69,1],[67,1],[64,1],[62,1],[60,2]],
+    [[67,1],[67,1],[69,1],[72,1],[69,1],[67,1],[64,2]],
+    [[64,1],[67,1],[69,1],[67,1],[65,1],[64,1],[62,2]],
+    [[64,1],[62,1],[60,1],[62,1],[64,1],[62,1],[60,2]]
+  ]},
+  "Cublak-Cublak Suweng": {bpm: 116, chords: [[48, "M"], [53, "M"], [55, "M"], [48, "M"]], barsPerLine: 2, lead: [
+    [[60,1],[64,1],[67,1],[64,1],[60,1],[64,1],[67,2]],
+    [[69,1],[67,1],[64,1],[67,1],[69,1],[72,1],[69,2]],
+    [[72,1],[69,1],[67,1],[64,1],[62,1],[64,1],[60,2]],
+    [[64,1],[62,1],[60,1],[62,1],[64,1],[62,1],[60,2]]
+  ]},
+  "Lir Ilir": {bpm: 96, chords: [[48, "M"], [45, "m"], [53, "M"], [55, "M"]], barsPerLine: 2, lead: [
+    [[64,1],[67,1],[69,1],[72,1],[69,1],[67,1],[64,2]],
+    [[65,1],[69,1],[69,1],[67,1],[64,1],[62,1],[64,2]],
+    [[67,1],[69,1],[72,1],[74,1],[72,1],[69,1],[67,2]],
+    [[69,1],[67,1],[64,1],[62,1],[60,1],[62,1],[60,2]]
+  ]},
+  "Jali-Jali": {bpm: 120, chords: [[48, "M"], [55, "M"], [53, "M"], [48, "M"]], barsPerLine: 2, lead: [
+    [[72,1],[69,1],[67,1],[69,1],[72,1],[69,1],[67,2]],
+    [[69,1],[72,1],[74,1],[72,1],[69,1],[67,1],[69,2]],
+    [[67,1],[69,1],[72,1],[69,1],[67,1],[64,1],[62,2]],
+    [[64,1],[67,1],[64,1],[62,1],[60,1],[62,1],[60,2]]
+  ]},
+  "Tokecang": {bpm: 118, chords: [[50, "M"], [55, "M"], [48, "M"], [55, "M"]], barsPerLine: 2, lead: [
+    [[69,1],[69,1],[71,1],[69,1],[66,1],[64,1],[62,2]],
+    [[69,1],[71,1],[74,1],[71,1],[69,1],[66,1],[69,2]],
+    [[69,1],[69,1],[71,1],[69,1],[66,1],[64,1],[62,2]],
+    [[71,1],[69,1],[66,1],[64,1],[62,1],[64,1],[62,2]]
+  ]},
+  "Manuk Dadali": {bpm: 104, chords: [[48, "M"], [53, "M"], [55, "M"], [48, "M"]], barsPerLine: 2, lead: [
+    [[64,1],[67,1],[72,1],[69,1],[67,1],[69,1],[72,2]],
+    [[74,1],[72,1],[69,1],[67,1],[69,1],[67,1],[64,2]],
+    [[64,1],[67,1],[72,1],[69,1],[67,1],[69,1],[72,2]],
+    [[69,1],[67,1],[64,1],[62,1],[64,1],[62,1],[60,2]]
   ]}
 };
 function hz(m){ return 440 * Math.pow(2, (m - 69) / 12); }
@@ -2651,8 +2717,10 @@ toggleMusic = function(){ if (dj.on) djStop(); else djStart(dj.idx || 0); };
     clone.addEventListener("click", function(){ toggleMusic(); });
   }
   document.getElementById("btnDjList").addEventListener("click", function(){
-    document.getElementById("djBox").classList.toggle("hidden");
-    paintDjList();
+    document.getElementById("songBox").classList.remove("hidden");
+    if (typeof renderSongs === "function") renderSongs();
+    var hd2 = document.getElementById("plDjHead");
+    if (hd2) hd2.scrollIntoView({behavior: "smooth", block: "center"});
   });
   setInterval(function(){
     if (dj.on && document.getElementById("roomOverlay").classList.contains("hidden")) djStop();
