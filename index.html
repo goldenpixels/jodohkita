@@ -573,6 +573,13 @@
   <div id="songBox" class="hidden" style="margin:8px 12px;">
     <input id="songSearch" type="text" placeholder="🔎 Cari lagu / kategori..." style="width:100%;background:#101a33;border:1px solid rgba(255,255,255,.13);color:#fff;border-radius:10px;padding:10px;">
     <div class="note" style="margin-top:6px;">Lagu daerah &amp; original bisa langsung dinyanyikan. Lagu populer tampil sebagai katalog — rilis setelah lisensi resmi.</div>
+    <div id="myMusic" style="margin-top:10px;">
+      <div style="font-weight:800;font-size:13.5px;margin-bottom:6px;">🎶 Musik Kamu Sendiri</div>
+      <button class="smallbtn" id="btnAddSong" type="button" style="width:100%;">➕ Tambah Lagu dari HP Kamu (MP3)</button>
+      <input id="mySongFile" type="file" accept="audio/*" class="hidden">
+      <div class="note" style="margin-top:6px;">Lagu tersimpan di perangkat kamu sendiri (bukan di server) — bisa diputar kapan aja di room ini, bahkan setelah aplikasi ditutup.</div>
+      <div id="mySongList" style="margin-top:6px;"></div>
+    </div>
     <div id="songList"></div>
   </div>
   <div id="giftSheet" class="hidden"><div class="gift-grid" id="giftGrid"></div></div>
@@ -639,7 +646,7 @@
 </nav>
 
 <footer>
-  JodohKita v2.1.2 — situs cari jodoh Indonesia (18+). Akun, profil & DM antar anggota tersimpan di server 🌐; room, gift & koin masih demo lokal.<br>
+  JodohKita v2.1.3 — situs cari jodoh Indonesia (18+). Akun, profil & DM antar anggota tersimpan di server 🌐; room, gift & koin masih demo lokal.<br>
   Versi demo: profil contoh fiktif, akun &amp; pendaftaran tersimpan lokal di perangkat.
 </footer>
 
@@ -1311,6 +1318,7 @@ function toggleMusic(){
 function toggleKaraoke(){
   var box = document.getElementById("karaokeBox"), b = document.getElementById("btnKaraoke");
   if (!karaOn){
+    if (typeof jkStopUserAudio === "function") jkStopUserAudio();
     karaOn = true; box.classList.remove("hidden"); b.textContent = "🎤 Karaoke: ON";
     if (!playing) toggleMusic();
     karaIdx = 0;
@@ -2689,6 +2697,7 @@ function paintDjList(){
   });
 }
 function djStart(i){
+  if (typeof jkStopUserAudio === "function") jkStopUserAudio();
   if (!AC){ try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ alert("Audio nggak didukung di perangkat ini."); return; } }
   if (AC.resume) AC.resume();
   if (eng.on) toggleKaraoke();
@@ -2884,6 +2893,69 @@ document.getElementById("myPhotoFile").addEventListener("change", function(){
 var _pap172 = paintAvPick;
 paintAvPick = function(){ _pap172(); paintMyPhotoPrev(); };
 paintMyPhotoPrev();
+</script>
+<script>
+/* ===== JodohKita v2.1.3 — musik sendiri (lagu dari HP pengguna, tersimpan lokal) ===== */
+var jkAudio = null, jkAudioId = null, jkAudioUrl = null, jkDbOK = false, jkDb = null, jkMemSongs = [];
+function jkDbOpen(){ return new Promise(function(res){ try { var rq = indexedDB.open("jodohkita", 1); rq.onupgradeneeded = function(){ rq.result.createObjectStore("songs", {keyPath: "id", autoIncrement: true}); }; rq.onsuccess = function(){ jkDb = rq.result; jkDbOK = true; res(true); }; rq.onerror = function(){ res(false); }; } catch(e){ res(false); } }); }
+function jkDbAll(){ return new Promise(function(res){ if (!jkDbOK) return res([]); try { var out = []; var cur = jkDb.transaction("songs", "readonly").objectStore("songs").openCursor(); cur.onsuccess = function(){ var c = cur.result; if (c){ out.push(c.value); c.continue(); } else res(out); }; cur.onerror = function(){ res(out); }; } catch(e){ res([]); } }); }
+function jkDbAdd(name, blob){ return new Promise(function(res){ if (!jkDbOK) return res(false); try { var rq = jkDb.transaction("songs", "readwrite").objectStore("songs").add({name: name, blob: blob, at: Date.now()}); rq.onsuccess = function(){ res(true); }; rq.onerror = function(){ res(false); }; } catch(e){ res(false); } }); }
+function jkDbDel(id){ return new Promise(function(res){ if (!jkDbOK) return res(false); try { var rq = jkDb.transaction("songs", "readwrite").objectStore("songs").delete(id); rq.onsuccess = function(){ res(true); }; rq.onerror = function(){ res(false); }; } catch(e){ res(false); } }); }
+function jkStopUserAudio(){ if (jkAudio){ try { jkAudio.pause(); } catch(e){} } if (jkAudioUrl){ try { URL.revokeObjectURL(jkAudioUrl); } catch(e){} jkAudioUrl = null; } jkAudio = null; jkAudioId = null; jkRenderMySongs(); }
+function jkPlaySong(id, blob, name){
+  jkStopUserAudio();
+  if (typeof dj !== "undefined" && dj.on) djStop();
+  if (typeof karaOn !== "undefined" && karaOn) toggleKaraoke();
+  jkAudioUrl = URL.createObjectURL(blob);
+  jkAudio = new Audio(jkAudioUrl); jkAudioId = id;
+  jkAudio.addEventListener("ended", function(){ jkStopUserAudio(); });
+  var p = jkAudio.play();
+  if (p && p.catch) p.catch(function(){ alert("Lagu ini nggak bisa diputar di perangkat ini."); jkStopUserAudio(); });
+  if (typeof addFeed === "function") addFeed("🎶 Memutar lagu kamu: " + name);
+  jkRenderMySongs();
+}
+function jkRenderMySongs(){
+  var box = document.getElementById("mySongList"); if (!box) return;
+  jkDbAll().then(function(rows){
+    var all = rows.concat(jkMemSongs);
+    box.innerHTML = "";
+    if (!all.length){ box.innerHTML = "<div class='note'>Belum ada lagu sendiri. Tap tombol di atas buat menambahkan MP3 dari HP kamu 🎵</div>"; return; }
+    all.forEach(function(r){
+      var playing = (jkAudioId === r.id && jkAudio);
+      var d = document.createElement("div"); d.className = "song-item";
+      d.innerHTML = "<span>🎶 <b></b><br><span class='note'>" + (playing ? "● LAGI DIPUTAR" : "Lagu kamu sendiri") + "</span></span><span style='white-space:nowrap;'><button class='smallbtn' type='button'>" + (playing ? "⏸️ Stop" : "▶️ Putar") + "</button> <button class='smallbtn' type='button'>🗑️</button></span>";
+      d.querySelector("b").textContent = r.name;
+      var btns = d.querySelectorAll("button");
+      btns[0].addEventListener("click", function(){ if (jkAudioId === r.id && jkAudio){ jkStopUserAudio(); } else { jkPlaySong(r.id, r.blob, r.name); } });
+      btns[1].addEventListener("click", function(){
+        if (!confirm("Hapus lagu ini dari daftar kamu?")) return;
+        if (jkAudioId === r.id) jkStopUserAudio();
+        if (r.mem){ jkMemSongs = jkMemSongs.filter(function(x){ return x.id !== r.id; }); jkRenderMySongs(); }
+        else jkDbDel(r.id).then(function(){ jkRenderMySongs(); });
+      });
+      box.appendChild(d);
+    });
+  });
+}
+jkDbOpen().then(function(){ jkRenderMySongs(); });
+document.getElementById("btnAddSong").addEventListener("click", function(){ document.getElementById("mySongFile").click(); });
+document.getElementById("mySongFile").addEventListener("change", function(ev){
+  var f = ev.target.files && ev.target.files[0];
+  ev.target.value = "";
+  if (!f) return;
+  if (f.size > 25 * 1024 * 1024){ alert("Lagu terlalu besar — maks 25 MB ya."); return; }
+  var name = f.name.replace(/\.[a-z0-9]+$/i, "");
+  if (jkDbOK){
+    jkDbAdd(name, f).then(function(ok){
+      if (ok){ if (typeof addFeed === "function") addFeed("🎶 Lagu ditambahkan: " + name); jkRenderMySongs(); }
+      else alert("Gagal menyimpan lagu di perangkat ini.");
+    });
+  } else {
+    jkMemSongs.push({id: "mem" + Date.now(), name: name, blob: f, mem: true});
+    if (typeof addFeed === "function") addFeed("🎶 Lagu ditambahkan (cuma sesi ini): " + name);
+    jkRenderMySongs();
+  }
+});
 </script>
 </body>
 </html>
