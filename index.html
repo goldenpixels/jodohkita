@@ -357,6 +357,7 @@
       <div style="font-size:16px;">Halo, <b id="whoLabel"></b> 👋 Kamu sudah masuk.</div>
       <div class="auth-row" style="margin-top:12px;">
         <button class="btn-ghost" id="btnLogout" type="button" style="margin-top:0;">Keluar</button>
+        <button class="btn-ghost" id="btnInbox" type="button" style="margin-top:0;">📥 Kotak Masuk <span id="inboxBadge"></span></button>
       </div>
       <div class="wallet-bar"><span>🪙 Saldo Koin Jodoh: <b class="coinBalTxt">0</b></span><button class="smallbtn" id="btnTopup" type="button">➕ Top Up</button></div>
     </div>
@@ -514,6 +515,14 @@
   </div>
 </div>
 
+<div class="ovl hidden" id="inboxOverlay">
+  <div class="ovl-head">
+    <button class="ovl-back" data-close="inboxOverlay" type="button">←</button>
+    <div class="ovl-title"><span>📥 Kotak Masuk</span></div>
+  </div>
+  <div id="inboxList" style="padding:14px;overflow-y:auto;"></div>
+</div>
+
 <div class="ovl hidden" id="callOverlay">
   <div class="callwrap">
     <div class="note" id="callMode">📞 Voice Call</div>
@@ -630,7 +639,7 @@
 </nav>
 
 <footer>
-  JodohKita v2.0 — situs cari jodoh Indonesia (18+). Akun & profil anggota tersimpan di server 🌐; room, gift & koin masih demo lokal.<br>
+  JodohKita v2.1.1 — situs cari jodoh Indonesia (18+). Akun, profil & DM antar anggota tersimpan di server 🌐; room, gift & koin masih demo lokal.<br>
   Versi demo: profil contoh fiktif, akun &amp; pendaftaran tersimpan lokal di perangkat.
 </footer>
 
@@ -890,6 +899,127 @@ function jkRemoteLogin(id, pw){
   } catch(e){ alert("Server lagi nggak bisa dihubungi — cek koneksi internetmu ya."); }
 }
 jkLoadRemote();
+/* ===== JodohKita v2.1 — DM beneran antar anggota (server) ===== */
+var jkDmTimer = null, jkDmPending = [];
+function jkMe(){ return load(LS_SES, ""); }
+function jkMyName(){ return (mine.length && mine[0].name) ? mine[0].name : jkMe(); }
+function jkDmIsRemote(){ return !!(dmProf && dmProf.remote && dmProf.mid); }
+function jkDmRender(rows){
+  var me = jkMe();
+  var arr = rows.map(function(r){ return { w: r.from_id === me ? "me" : "them", t: r.body, k: "txt", sid: r.id }; });
+  var echoed = {};
+  arr.forEach(function(m){ if (m.w === "me") echoed[m.t] = (echoed[m.t] || 0) + 1; });
+  jkDmPending = jkDmPending.filter(function(pd){
+    if (echoed[pd.t]){ echoed[pd.t]--; return false; }
+    return true;
+  });
+  jkDmPending.forEach(function(pd){ arr.push({ w: "me", t: pd.t, k: "txt" }); });
+  var all = dmStore(); all[dmKey] = arr; localStorage.setItem("jk_dm", JSON.stringify(all));
+  paintDM();
+}
+function jkDmLoad(){
+  if (!jkDmIsRemote()) return;
+  var me = jkMe(); if (!me) return;
+  var mid = dmProf.mid;
+  var q = "or=(and(from_id.eq." + me + ",to_id.eq." + mid + "),and(from_id.eq." + mid + ",to_id.eq." + me + "))";
+  fetch(JK_API.url + "/rest/v1/jk_messages?select=*&" + q + "&order=created_at.asc&limit=100", { headers: jkHead() })
+  .then(function(r){ return r.ok ? r.json() : null; })
+  .then(function(rows){ if (rows && dmProf && dmProf.mid === mid) jkDmRender(rows); })
+  .catch(function(){});
+}
+function jkDmStart(){
+  if (jkDmTimer){ clearInterval(jkDmTimer); jkDmTimer = null; }
+  if (!jkDmIsRemote()) return;
+  jkDmPending = [];
+  jkDmLoad();
+  jkDmTimer = setInterval(function(){
+    var ov = document.getElementById("dmOverlay");
+    if (!ov || ov.classList.contains("hidden")){ clearInterval(jkDmTimer); jkDmTimer = null; return; }
+    jkDmLoad();
+  }, 6000);
+}
+function jkDmSend(t){
+  var me = jkMe();
+  if (!me){ alert("Masuk dulu pakai akunmu ya, baru bisa kirim pesan beneran ke anggota ini 🙏"); return; }
+  var inp = document.getElementById("dmInput"); inp.value = "";
+  jkDmPending.push({ t: t });
+  var all = dmStore(); if (!all[dmKey]) all[dmKey] = [];
+  all[dmKey].push({ w: "me", t: t, k: "txt" }); localStorage.setItem("jk_dm", JSON.stringify(all));
+  paintDM();
+  fetch(JK_API.url + "/rest/v1/jk_messages", { method: "POST", headers: jkHead({ "Prefer": "return=minimal" }),
+    body: JSON.stringify({ from_id: me, from_name: jkMyName(), to_id: dmProf.mid, body: t.slice(0, 500) }) })
+  .then(function(r){ if (r.ok) jkDmLoad(); else alert("Pesan gagal terkirim — coba lagi ya."); })
+  .catch(function(){ alert("Pesan gagal terkirim — cek internetmu ya."); });
+}
+function jkInboxBadge(){
+  var me = jkMe(); var b = document.getElementById("inboxBadge");
+  if (!b) return;
+  if (!me){ b.textContent = ""; return; }
+  var seen = 0; try { seen = parseInt(localStorage.getItem("jk_dm_seen") || "0", 10) || 0; } catch(e){}
+  fetch(JK_API.url + "/rest/v1/jk_messages?to_id=eq." + me + "&id=gt." + seen + "&select=id", { headers: jkHead() })
+  .then(function(r){ return r.ok ? r.json() : []; })
+  .then(function(rows){ b.textContent = rows && rows.length ? "(" + rows.length + " baru)" : ""; })
+  .catch(function(){});
+}
+function jkOpenInbox(){
+  var me = jkMe();
+  if (!me){ alert("Masuk dulu pakai akunmu ya 🙏"); return; }
+  showEl("inboxOverlay");
+  var box = document.getElementById("inboxList");
+  box.innerHTML = '<div class="note">Memuat percakapan…</div>';
+  fetch(JK_API.url + "/rest/v1/jk_messages?or=(from_id.eq." + me + ",to_id.eq." + me + ")&order=created_at.desc&limit=200&select=*", { headers: jkHead() })
+  .then(function(r){ return r.ok ? r.json() : []; })
+  .then(function(rows){
+    if (!rows || !rows.length){ box.innerHTML = '<div class="note">Belum ada percakapan. Buka profil anggota 🌐 terus tap 💬 Chat buat mulai.</div>'; return; }
+    var maxId = 0; rows.forEach(function(r){ if (r.id > maxId) maxId = r.id; });
+    try { localStorage.setItem("jk_dm_seen", String(maxId)); } catch(e){}
+    jkInboxBadge();
+    var conv = {}, order = [];
+    rows.forEach(function(r){
+      var other = r.from_id === me ? r.to_id : r.from_id;
+      if (!conv[other]){ conv[other] = { mid: other, last: r, n: 0 }; order.push(other); }
+      conv[other].n++;
+    });
+    var mids = order.join(",");
+    fetch(JK_API.url + "/rest/v1/jk_profiles?member_id=in.(" + mids + ")&select=*", { headers: jkHead() })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(profs){
+      var byMid = {}; (profs || []).forEach(function(p){ byMid[p.member_id] = p; });
+      box.innerHTML = "";
+      order.forEach(function(mid){
+        var c = conv[mid], pr = byMid[mid];
+        var name = pr ? pr.name : ("@" + mid);
+        var item = document.createElement("div");
+        item.className = "card"; item.style.cursor = "pointer"; item.style.marginBottom = "10px";
+        var h = document.createElement("h3"); h.textContent = name + (pr ? ", " + pr.age : "");
+        var m1 = document.createElement("div"); m1.className = "meta";
+        m1.textContent = (c.last.from_id === me ? "Kamu: " : "") + c.last.body;
+        var m2 = document.createElement("div"); m2.className = "meta";
+        m2.textContent = c.n + " pesan • @" + mid;
+        item.appendChild(h); item.appendChild(m1); item.appendChild(m2);
+        item.addEventListener("click", function(){
+          if (!pr) return;
+          var p = jkMapProfile(pr);
+          hideEl("inboxOverlay");
+          openDM(p.name + "|" + p.age + "|" + p.city, p);
+        });
+        box.appendChild(item);
+      });
+    });
+  }).catch(function(){ box.innerHTML = '<div class="note">Server lagi nggak bisa dihubungi — cek internetmu ya.</div>'; });
+}
+document.getElementById("btnInbox").addEventListener("click", jkOpenInbox);
+jkInboxBadge();
+setInterval(jkInboxBadge, 45000);
+
+/* ===== v2.1.1 — kunci audio dibuka dari sentuhan pertama (penting buat APK/WebView) ===== */
+document.addEventListener("pointerdown", function(){
+  try {
+    if (!window.AC){ AC = new (window.AudioContext || window.webkitAudioContext)(); }
+    if (AC && AC.state === "suspended" && AC.resume) AC.resume();
+  } catch(e){}
+}, true);
+
 
 
 /* ---------- admin (demo, local) ---------- */
@@ -1206,9 +1336,10 @@ function openDM(key, p){
   var im = document.getElementById("dmImg");
   if (p.img){ im.src = p.img; im.style.display = ""; im.className = "frame-" + (p.frame || "f0"); } else { im.style.display = "none"; }
   var all = dmStore();
-  if (!all[key] || !all[key].length){ pushDM(key, "them", "Halo! Makasih udah mampir ke profil aku 😊"); }
+  if ((!all[key] || !all[key].length) && !(p && p.remote)){ pushDM(key, "them", "Halo! Makasih udah mampir ke profil aku 😊"); }
   paintDM();
   showEl("dmOverlay");
+  jkDmStart();
 }
 function paintDM(){
   var box = document.getElementById("dmMsgs");
@@ -1232,6 +1363,7 @@ function sendDM(){
   var inp = document.getElementById("dmInput");
   var t = inp.value.trim();
   if (!t || !dmKey) return;
+  if (dmProf && dmProf.remote){ jkDmSend(t); return; }
   inp.value = "";
   pushDM(dmKey, "me", t); paintDM(); dmReply();
 }
@@ -1277,7 +1409,7 @@ document.getElementById("roomSend").addEventListener("click", function(){
 document.getElementById("roomMsg").addEventListener("keydown", function(e){ if (e.key === "Enter") document.getElementById("roomSend").click(); });
 document.getElementById("dmSend").addEventListener("click", sendDM);
 document.getElementById("dmInput").addEventListener("keydown", function(e){ if (e.key === "Enter") sendDM(); });
-document.getElementById("btnVoiceNote").addEventListener("click", function(){ if (!dmKey) return; pushDM(dmKey, "me", "", "voice"); paintDM(); dmReply(); });
+document.getElementById("btnVoiceNote").addEventListener("click", function(){ if (!dmKey) return; if (dmProf && dmProf.remote){ alert("Pesan suara antar anggota belum tersedia — pakai teks dulu ya 🙏"); return; } pushDM(dmKey, "me", "", "voice"); paintDM(); dmReply(); });
 document.getElementById("btnVoiceCall").addEventListener("click", function(){ openCall(false); });
 document.getElementById("btnVideoCall").addEventListener("click", function(){ openCall(true); });
 document.getElementById("btnEndCall").addEventListener("click", endCall);
@@ -2502,6 +2634,7 @@ function djStart(i){
   document.getElementById("btnMusic").textContent = "⏸️ Stop DJ";
   paintDjList();
   addFeed("🎧 DJ memutar: " + dj.track.name + " — gas joget! 🕺");
+  if (AC.state && AC.state !== "running"){ addFeed("🔊 Audio masih disiapkan (" + AC.state + ") — tap layarnya sekali lagi ya."); setTimeout(function(){ if (AC && AC.resume) AC.resume(); }, 350); }
 }
 function djStop(){
   if (dj.timer) clearInterval(dj.timer);
