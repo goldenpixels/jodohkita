@@ -407,6 +407,14 @@
         <div><label>Pekerjaan</label><input id="rJob" type="text" maxlength="30" placeholder="cth: Guru"></div>
         <div><label>Hobi</label><input id="rHobi" type="text" maxlength="40" placeholder="cth: Memasak, traveling"></div>
       </div>
+      <div style="margin-top:10px;"><label>Foto profil (opsional)</label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <img id="regPhotoPrev" class="hidden" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,215,0,.6);" alt="">
+          <button class="smallbtn" id="btnRegPhoto" type="button">📷 Pilih Foto Sendiri</button>
+          <span class="note">Dari galeri HP-mu. Belum punya foto pas? Nanti bisa pasang/ganti di panel Foto &amp; Bingkai.</span>
+        </div>
+        <input id="regPhotoFile" type="file" accept="image/*" class="hidden">
+      </div>
       <div style="margin-top:10px;"><label>Tentang saya (singkat)</label><textarea id="rBio" rows="2" maxlength="140" placeholder="Ceritakan dirimu dengan sopan, maks. 140 huruf."></textarea></div>
       <button class="btn-main" type="submit">Daftar</button>
       <div class="ok" id="regOk">✅ Pendaftaran tersimpan! Profilmu tampil paling atas di daftar. (Versi demo: data hanya tersimpan di perangkat ini.)</div>
@@ -417,7 +425,13 @@
   <section class="panel" id="avatarPanel">
     <h2>🎭 Avatar &amp; Bingkai Saya</h2>
     <div class="note">Pilih foto avatar buat profil kamu (foto contoh AI), lalu pilih bingkai — bingkai premium bisa dibeli pakai Koin Jodoh. Pilihanmu nempel ke semua profil yang kamu daftarkan di perangkat ini.</div>
-    <div class="avpick" id="avPick"></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+        <img id="myPhotoPrev" class="hidden" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,215,0,.6);" alt="">
+        <button class="smallbtn" id="btnMyPhoto" type="button">📷 Pasang Foto Profil Sendiri</button>
+        <span class="note">Dari galeri HP-mu — otomatis diperkecil, tersimpan di perangkat ini, langsung tampil di profil, room &amp; chat.</span>
+      </div>
+      <input id="myPhotoFile" type="file" accept="image/*" class="hidden">
+      <div class="avpick" id="avPick"></div>
     <div class="shop-grid" id="framePick"></div>
   </section>
 
@@ -616,7 +630,7 @@
 </nav>
 
 <footer>
-  JodohKita v1.7.1 — prototipe situs cari jodoh Indonesia (18+), fitur sosial demo lokal.<br>
+  JodohKita v1.7.2 — prototipe situs cari jodoh Indonesia (18+), fitur sosial demo lokal.<br>
   Versi demo: profil contoh fiktif, akun &amp; pendaftaran tersimpan lokal di perangkat.
 </footer>
 
@@ -2484,6 +2498,67 @@ paintTicketBox();
     });
   });
 })();
+</script>
+
+<script>
+/* ===== JodohKita v1.7.2 — foto profil sendiri buat member ===== */
+function processPhoto(file, cb){
+  if (!file) return;
+  if (file.type.indexOf("image/") !== 0){ alert("Pilih file gambar ya (JPG/PNG)."); return; }
+  if (file.size > 6 * 1024 * 1024){ alert("Fotonya kegedean — maks 6 MB ya."); return; }
+  var rd = new FileReader();
+  rd.onload = function(){
+    var img = new Image();
+    img.onload = function(){
+      var max = 320, sc = Math.min(1, max / Math.max(img.width, img.height));
+      var cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(img.width * sc));
+      cv.height = Math.max(1, Math.round(img.height * sc));
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      cb(cv.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = function(){ alert("Gambarnya nggak bisa dibaca — coba foto lain ya."); };
+    img.src = rd.result;
+  };
+  rd.readAsDataURL(file);
+}
+var regPhotoData = "";
+document.getElementById("btnRegPhoto").addEventListener("click", function(){ document.getElementById("regPhotoFile").click(); });
+document.getElementById("regPhotoFile").addEventListener("change", function(){
+  var f = this.files && this.files[0];
+  if (f) processPhoto(f, function(d){
+    regPhotoData = d;
+    var pv = document.getElementById("regPhotoPrev");
+    pv.src = d; pv.classList.remove("hidden");
+  });
+  this.value = "";
+});
+document.getElementById("regForm").addEventListener("submit", function(){
+  if (!regPhotoData || !mine.length) return;
+  var nm = (document.getElementById("rName").value.trim().slice(0, 30) || "Tanpa Nama");
+  if (mine[0].name === nm){ mine[0].img = regPhotoData; store(LS_KEY, mine); render(); }
+});
+function paintMyPhotoPrev(){
+  var pv = document.getElementById("myPhotoPrev"); if (!pv) return;
+  var av = getMyAv();
+  if (av.img && av.img.indexOf("data:") === 0){ pv.src = av.img; pv.classList.remove("hidden"); }
+  else pv.classList.add("hidden");
+}
+document.getElementById("btnMyPhoto").addEventListener("click", function(){ document.getElementById("myPhotoFile").click(); });
+document.getElementById("myPhotoFile").addEventListener("change", function(){
+  var f = this.files && this.files[0];
+  if (f) processPhoto(f, function(d){
+    var av = getMyAv(); av.img = d;
+    try { localStorage.setItem("jk_myav", JSON.stringify(av)); }
+    catch(e){ alert("Penyimpanan perangkat penuh — foto gagal disimpan."); return; }
+    applyMineStyle(); paintMyPhotoPrev();
+    alert("📷 Foto profilmu sudah dipasang!");
+  });
+  this.value = "";
+});
+var _pap172 = paintAvPick;
+paintAvPick = function(){ _pap172(); paintMyPhotoPrev(); };
+paintMyPhotoPrev();
 </script>
 </body>
 </html>
