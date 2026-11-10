@@ -630,7 +630,7 @@
 </nav>
 
 <footer>
-  JodohKita v1.7.2 — prototipe situs cari jodoh Indonesia (18+), fitur sosial demo lokal.<br>
+  JodohKita v2.0 — situs cari jodoh Indonesia (18+). Akun & profil anggota tersimpan di server 🌐; room, gift & koin masih demo lokal.<br>
   Versi demo: profil contoh fiktif, akun &amp; pendaftaran tersimpan lokal di perangkat.
 </footer>
 
@@ -653,7 +653,9 @@ function hashPw(s){ var h = 0x811c9dc5; for (var i = 0; i < s.length; i++){ h ^=
 var mine = load(LS_KEY, []), likes = load(LS_LIKE, {}), saves = load(LS_SAVE, {});
 var cardsEl = document.getElementById("cards");
 
-function allProfiles(){ return mine.concat(PROFILES); }
+var REMOTE = [];
+var JK_REMOTE_TOTAL = 0;
+function allProfiles(){ return mine.concat(REMOTE).concat(PROFILES); }
 function initials(n){ return n.split(" ").map(function(w){return w[0];}).slice(0,2).join("").toUpperCase(); }
 
 function render(){
@@ -696,7 +698,7 @@ function render(){
     card.querySelector(".btn-chat").addEventListener("click", function(){ openDM(key, p); });
     likeBtn.addEventListener("click", function(){ likes[key] = (likes[key] || 0) + 1; store(LS_LIKE, likes); paint(); renderAdmin(); });
     saveBtn.addEventListener("click", function(){ saves[key] = !saves[key]; store(LS_SAVE, saves); paint(); });
-    card.querySelector(".demo-tag").textContent = p.mine ? "Profil kamu (demo)" : "Profil contoh (fiktif, foto AI)";
+    card.querySelector(".demo-tag").textContent = p.mine ? "Profil kamu" : (p.remote ? "🌐 Anggota terdaftar" : "Profil contoh (fiktif, foto AI)");
     paint();
     cardsEl.appendChild(card);
   });
@@ -730,6 +732,7 @@ document.getElementById("regForm").addEventListener("submit", function(e){
   document.getElementById("regOk").style.display = "block";
   var sel = document.getElementById("fCity"); sel.innerHTML = '<option value="">Semua kota</option>'; fillCities();
   render(); renderAdmin(); window.scrollTo({top: 320, behavior: "smooth"});
+  jkSyncProfile();
 });
 
 /* ---------- member accounts (demo, local) ---------- */
@@ -753,6 +756,7 @@ document.getElementById("btnRegister").addEventListener("click", function(){
   if (acc[id]){ alert("ID itu sudah dipakai. Coba ID lain atau langsung Masuk."); return; }
   acc[id] = { pw: hashPw(pw), dibuat: new Date().toISOString() };
   store(LS_ACC, acc); store(LS_SES, id);
+  try { localStorage.setItem("jk_srvhash", jkHashPw(id, pw)); localStorage.removeItem("jk_synced"); } catch(e){}
   alert("Akun @" + id + " berhasil dibuat. Kamu sudah masuk 🎉");
   paintAuth(); renderAdmin();
 });
@@ -760,13 +764,133 @@ document.getElementById("btnLogin").addEventListener("click", function(){
   var id = document.getElementById("liId").value.trim().toLowerCase();
   var pw = document.getElementById("liPass").value;
   var acc = accounts();
-  if (!acc[id]){ alert("Akun belum terdaftar di perangkat ini — tap \"Buat Akun Baru\" dulu ya, atau masuk lewat tombol 👑 Login Owner di bawah."); return; }
+  if (!acc[id]){ jkRemoteLogin(id, pw); return; }
   if (acc[id].pw !== hashPw(pw)){ alert("Kata sandi salah. Coba lagi."); return; }
   store(LS_SES, id); paintAuth();
 });
 document.getElementById("btnLogout").addEventListener("click", function(){
   store(LS_SES, ""); paintAuth();
 });
+/* ===== JodohKita v2.0 — backend server (akun & profil beneran) ===== */
+var JK_API = { url: "https://kmkabjvhqtsaskhekecs.supabase.co", key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtta2FianZocXRzYXNraGVrZWNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQwOTY1NDQsImV4cCI6MjEwOTY3MjU0NH0.G1HbMk-BmORhBH0aNzP9x85lVM2BZ2FVr9SlklspTz0" };
+function jkSha256Raw(ascii){
+  function rr(v, a){ return (v >>> a) | (v << (32 - a)); }
+  var K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  var bitLen = ascii.length * 8;
+  ascii += "\x80";
+  while (ascii.length % 64 !== 56) ascii += "\x00";
+  var words = [];
+  for (var i = 0; i < ascii.length; i++){
+    words[i >> 2] = (words[i >> 2] || 0) | (ascii.charCodeAt(i) << ((3 - i % 4) * 8));
+  }
+  words[words.length] = 0;
+  words[words.length] = bitLen;
+  var w = new Array(64);
+  for (var block = 0; block < words.length; block += 16){
+    var a=H[0], b=H[1], c=H[2], d=H[3], e=H[4], f=H[5], g=H[6], h=H[7];
+    for (var t = 0; t < 64; t++){
+      if (t < 16) w[t] = words[block + t] | 0;
+      else {
+        var s0 = rr(w[t-15], 7) ^ rr(w[t-15], 18) ^ (w[t-15] >>> 3);
+        var s1 = rr(w[t-2], 17) ^ rr(w[t-2], 19) ^ (w[t-2] >>> 10);
+        w[t] = (w[t-16] + s0 + w[t-7] + s1) | 0;
+      }
+      var S1 = rr(e, 6) ^ rr(e, 11) ^ rr(e, 25);
+      var ch = (e & f) ^ (~e & g);
+      var temp1 = (h + S1 + ch + K[t] + w[t]) | 0;
+      var S0 = rr(a, 2) ^ rr(a, 13) ^ rr(a, 22);
+      var maj = (a & b) ^ (a & c) ^ (b & c);
+      var temp2 = (S0 + maj) | 0;
+      h = g; g = f; f = e; e = (d + temp1) | 0;
+      d = c; c = b; b = a; a = (temp1 + temp2) | 0;
+    }
+    H[0]=(H[0]+a)|0; H[1]=(H[1]+b)|0; H[2]=(H[2]+c)|0; H[3]=(H[3]+d)|0;
+    H[4]=(H[4]+e)|0; H[5]=(H[5]+f)|0; H[6]=(H[6]+g)|0; H[7]=(H[7]+h)|0;
+  }
+  var out = "";
+  for (var j = 0; j < 8; j++){
+    for (var sh2 = 3; sh2 >= 0; sh2--){
+      var by = (H[j] >> (sh2 * 8)) & 255;
+      out += (by < 16 ? "0" : "") + by.toString(16);
+    }
+  }
+  return out;
+}
+function jkSha256(str){ return jkSha256Raw(unescape(encodeURIComponent(str))); }
+function jkHashPw(id, pw){ return jkSha256(id + "::" + pw); }
+function jkHead(extra){
+  var h = { "apikey": JK_API.key, "Authorization": "Bearer " + JK_API.key, "Content-Type": "application/json" };
+  if (extra) for (var k in extra) h[k] = extra[k];
+  return h;
+}
+function jkMapProfile(r){
+  return { name: r.name, gender: r.gender || "", age: r.age, city: r.city || "-", job: r.job || "-",
+    hobi: r.hobbies || "", status: r.status_text || "Lajang", niat: r.intent || "Kenalan Dulu",
+    bio: "", img: r.photo || "", frame: "f0", remote: true, mid: r.member_id };
+}
+function jkLoadRemote(){
+  try {
+    fetch(JK_API.url + "/rest/v1/jk_profiles?select=*&order=created_at.desc&limit=100", { headers: jkHead() })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(rows){
+      if (!rows) return;
+      JK_REMOTE_TOTAL = rows.length;
+      var ses = load(LS_SES, "");
+      REMOTE = rows.filter(function(r){ return r.member_id !== ses; }).map(jkMapProfile);
+      var sel = document.getElementById("fCity");
+      if (sel){ sel.innerHTML = '<option value="">Semua kota</option>'; fillCities(); }
+      render(); renderAdmin();
+    }).catch(function(){});
+  } catch(e){}
+}
+function jkSyncProfile(){
+  setTimeout(function(){
+    try {
+      var ses = load(LS_SES, ""); if (!ses) return;
+      var sh = ""; try { sh = localStorage.getItem("jk_srvhash") || ""; } catch(e){}
+      if (!sh) return;
+      try { if (localStorage.getItem("jk_synced") === ses){ jkLoadRemote(); return; } } catch(e){}
+      if (!mine.length) return;
+      var p = mine[0];
+      var body = { member_id: ses, pass_hash: sh,
+        name: (p.name || "Tanpa Nama").slice(0, 40), age: p.age || 18,
+        city: (p.city || "-").slice(0, 60), job: (p.job || "-").slice(0, 60),
+        gender: (p.gender || "").slice(0, 20), intent: (p.niat || "").slice(0, 40),
+        status_text: (p.status || "Lajang").slice(0, 60), hobbies: (p.hobi || "").slice(0, 200),
+        photo: (p.img && p.img.indexOf("data:") === 0 && p.img.length < 280000) ? p.img : null };
+      fetch(JK_API.url + "/rest/v1/jk_members", { method: "POST", headers: jkHead({ "Prefer": "return=minimal" }), body: JSON.stringify(body) })
+      .then(function(r){
+        if (r.ok || r.status === 409){ try { localStorage.setItem("jk_synced", ses); } catch(e){} jkLoadRemote(); }
+      }).catch(function(){});
+    } catch(e){}
+  }, 500);
+}
+function jkRemoteLogin(id, pw){
+  try {
+    fetch(JK_API.url + "/rest/v1/jk_members?member_id=eq." + encodeURIComponent(id) + "&select=*", { headers: jkHead() })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(rows){
+      if (!rows || !rows.length){ alert("Akun belum terdaftar — tap \"Buat Akun Baru\" dulu ya, atau masuk lewat tombol 👑 Login Owner di bawah."); return; }
+      var row = rows[0];
+      if (row.pass_hash !== jkHashPw(id, pw)){ alert("Kata sandi salah. Coba lagi."); return; }
+      var acc = accounts(); acc[id] = { pw: hashPw(pw), dibuat: new Date().toISOString() }; store(LS_ACC, acc);
+      try { localStorage.setItem("jk_srvhash", row.pass_hash); localStorage.setItem("jk_synced", id); } catch(e){}
+      store(LS_SES, id);
+      var ada = false; for (var i = 0; i < mine.length; i++) if (mine[i].name === row.name) ada = true;
+      if (!ada){
+        mine.unshift({ name: row.name, gender: row.gender || "", age: row.age, city: row.city || "-", job: row.job || "-",
+          hobi: row.hobbies || "", status: row.status_text || "Lajang", niat: row.intent || "Kenalan Dulu",
+          bio: "", img: row.photo || "", mine: true });
+        store(LS_KEY, mine);
+      }
+      paintAuth(); render(); renderAdmin(); jkLoadRemote();
+      alert("Berhasil masuk — akunmu ditemukan di server 🌐 Selamat datang kembali, @" + id + "!");
+    }).catch(function(){ alert("Server lagi nggak bisa dihubungi — cek koneksi internetmu ya."); });
+  } catch(e){ alert("Server lagi nggak bisa dihubungi — cek koneksi internetmu ya."); }
+}
+jkLoadRemote();
+
 
 /* ---------- admin (demo, local) ---------- */
 function isAdmin(){ return load(LS_ADMSES, "") === "1"; }
@@ -822,7 +946,7 @@ function renderAdmin(){
   if (!isAdmin()){ panel.classList.add("hidden"); return; }
   panel.classList.remove("hidden");
   document.getElementById("stProfiles").textContent = allProfiles().length;
-  document.getElementById("stAccounts").textContent = Object.keys(accounts()).length;
+  document.getElementById("stAccounts").textContent = Object.keys(accounts()).length + JK_REMOTE_TOTAL;
   var tl = 0; Object.keys(likes).forEach(function(k){ tl += likes[k] || 0; });
   document.getElementById("stLikes").textContent = tl;
   var box = document.getElementById("adminList");
